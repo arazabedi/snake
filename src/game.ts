@@ -1,7 +1,7 @@
 //Imports
 import { CollisionType, Color, Engine, vec, KeyEvent, Actor, Keys, Font, FontUnit, Label, CollisionStartEvent, Scene } from 'excalibur';
 import { SnakeParticle } from './SnakeParticle';
-import { Snake } from './snake';
+import { Snake } from './Snake';
 import { randomColor } from './utils';
 
 // Game Configuration
