@@ -1,156 +1,113 @@
 //Imports
-import { CollisionType, Color, Engine, vec, KeyEvent, Actor, Keys, Vector, Font, FontUnit, Label, CollisionStartEvent, CollisionEndEvent, Collider, Side, CollisionContact } from 'excalibur';
+import { CollisionType, Color, Engine, vec, KeyEvent, Actor, Keys, Font, FontUnit, Label, CollisionStartEvent, Scene } from 'excalibur';
+import { SnakeParticle } from './SnakeParticle';
+import { Snake } from './snake';
+import { randomColor } from './utils';
 
-// Start game
+// Game Configuration
 const game = new Engine({
 	width: 800,
 	height: 600,
+	maxFps: 20
 });
 
+// Start the Game
 game.start();
 
-// Create a Snake object to hold all the SnakeParticle objects
-const snake: Actor[] = []
+// game.goToScene('gameplay')
+let gameSpeed = 200
+
+// Create a Snake array to hold all the SnakeParticle objects
+const snake = new Snake()
 
 // Function to add a new particle to the snake
-function addSnakeParticle(x: number, y: number) {
-	const newSnakeParticle = new Actor({
+function addSnakeParticle(x: number, y: number, color?: Color) {
+	const newSnakeParticle = new SnakeParticle({
 		x: x,
 		y: y,
 		width: 10,
 		height: 10,
-		color: Color.Green
+		color: color || randomColor(),
+		// color: Color.Green,
+		CollisionType: CollisionType.Active
 	});
-	snake.push(newSnakeParticle);
+	snake.addParticle(newSnakeParticle);
 	game.add(newSnakeParticle);
-	// No inherent behaviour on collision for snake particles
-	newSnakeParticle.body.collisionType = CollisionType.Passive;
 	return newSnakeParticle
 }
 
+// Create snake head with no previousParticle property
+const snakeHead = addSnakeParticle(400, 300, Color.White)
+
 // Starting array of snake particles
-for (let i = 0; i < 6; i++) {
+for (let i = 0; i < 5; i++) {
 	const x = 400 - i * 10;
 	const y = 300;
 	addSnakeParticle(x, y);
 }
 
-// Only allow the snake head to have collision effects when touching food
-snake[0].body.collisionType = CollisionType.Passive
+// Set the snake head's starting movement vector
+snakeHead.vel = vec(gameSpeed, 0);
 
-// Set the snake head's movement vector
-let snakeHeadVector = vec(200, 0);
+// Set the rest of the snake particle's starting movement vector
+for (let i = 1; i < snake.array.length; i++) {
+	snake.array[i].vel = snakeHead.vel
 
-snake.forEach((particle) => {
-	particle.vel = snakeHeadVector
-})
+}
 
-// Snake boundary collision behaviour
-snake.forEach((particle) => {
+// Boundary collision behaviour
+snake.array.forEach((particle) => {
 	particle.on("postupdate", () => {
-		// If the particle collides with the left
-		// of the screen, reappear at the right
-		if (particle.pos.x + particle.width / 2 < 0) {
-			particle.pos.x = game.drawWidth + particle.width / 2;
-		}
+			if (particle.pos.x + particle.width / 2 < 0) {
+					particle.pos.x = game.drawWidth;
+			}
 
-		// If the particle collides with the right
-		// of the screen, reappear on the left
-		if (particle.pos.x - particle.width / 2 > game.drawWidth) {
-			particle.pos.x = -particle.width / 2;
-		}
+			if (particle.pos.x - particle.width / 2 > game.drawWidth) {
+					particle.pos.x = 0;
+			}
 
-		// If the particle collides with the top
-		// of the screen, reappear at the bottom
-		if (particle.pos.y + particle.height / 2 < 0) {
-			particle.pos.y = game.drawHeight + particle.height / 2;
-		}
+			if (particle.pos.y + particle.height / 2 < 0) {
+					particle.pos.y = game.drawHeight;
+			}
 
-		// If the particle collides with the bottom
-		// of the screen, reappear at the top
-		if (particle.pos.y - particle.height / 2 > game.drawHeight) {
-			particle.pos.y = -particle.height / 2;
-		}
+			if (particle.pos.y - particle.height / 2 > game.drawHeight) {
+					particle.pos.y = 0;
+			}
 	});
 });
 
-// Store all turn points
-const turnArray: Turn[] = []
 
-// Options for creating an instance of the Turn Class  - note velocity != vel
-interface TurnOptions {
-	x: number,
-	y: number,
-	velocity: Vector,
-	width: number,
-	height: number,
-	color: Color
-}
 
-// Actor extension to add velocity property without moving the turn actor
-class Turn extends Actor {
-	public velocity: Vector;
+// Snake moves in a chain-like manner
+game.on("postupdate", () => {
+	for (let i = 1; i < snake.array.length; i++) {
+		const currentParticle = snake.array[i];
+		const previousParticle = snake.array[i - 1];
 
-	constructor(options: TurnOptions) {
-		super(options);
-		this.velocity = options.velocity;
+		currentParticle.pos = previousParticle.oldPos
 	}
-}
-
-function createTurn(position, velocity) {
-	const turn = new Turn({
-		x: position.x,
-		y: position.y,
-		velocity: velocity,
-		width: 10,
-		height: 10,
-		color: Color.Yellow
-	})
-
-	game.add(turn)
-	turn.body.collisionType = CollisionType.Passive;
-	turnArray.push(turn)
-}
-
-for (let i = 0; i < turnArray.length; i++) {
-	turnArray[0].on("collisionstart", () => {
-	}
-	}
+})
 
 // Snake controls
 game.input.keyboard.on("press", (event: KeyEvent) => {
-	// Position at key press
-	const position = snake[0].pos;
-	// Snake head velocity stored so we in block can control it below
-	let snakeHeadVector = snake[0].vel;
-
-	// Turn object should be placed 1 particle's length ahead of position in original vector
-	const turnPosition = {
-		x: position.x + snakeHeadVector.x * 10 / 200,
-		y: position.y + snakeHeadVector.y * 10 / 200
-	};
-
+	// Snake head velocity at key press
+	let snakeHeadVector = snakeHead.vel;
 	// Only allow a 90 degree rotation
-	if (event.key == Keys.ArrowDown && snakeHeadVector.y !== -200) {
-		snakeHeadVector = vec(0, 200);
+	if (event.key == Keys.ArrowDown && snakeHeadVector.y !== -gameSpeed) {
+		snakeHeadVector = vec(0, gameSpeed);
 	}
-	if (event.key == Keys.ArrowUp && snakeHeadVector.y !== 200) {
-		snakeHeadVector = vec(0, -200);
+	if (event.key == Keys.ArrowUp && snakeHeadVector.y !== gameSpeed) {
+		snakeHeadVector = vec(0, -gameSpeed);
 	}
-	if (event.key == Keys.ArrowLeft && snakeHeadVector.x !== 200) {
-		snakeHeadVector = vec(-200, 0);
+	if (event.key == Keys.ArrowLeft && snakeHeadVector.x !== gameSpeed) {
+		snakeHeadVector = vec(-gameSpeed, 0);
 	}
-	if (event.key == Keys.ArrowRight && snakeHeadVector.x !== -200) {
-		snakeHeadVector = vec(200, 0);
+	if (event.key == Keys.ArrowRight && snakeHeadVector.x !== -gameSpeed) {
+		snakeHeadVector = vec(gameSpeed, 0);
 	}
 
 	// Change velocity
-	snake[0].vel = snakeHeadVector;
-
-	// Create a Turn instance if a change in direction occurs
-	if (!snake[0].oldVel.equals(snakeHeadVector)) {
-		createTurn(turnPosition, snakeHeadVector);
-	}
+	snakeHead.vel = snakeHeadVector;
 });
 
 // Food for the snake with random position
@@ -158,6 +115,7 @@ function getRandomPosition(min: number, max: number) {
 	return Math.floor(Math.random() * (max - min + 1) + min)
 }
 
+// Will store each food created here and use to calculate score
 const foodArray: Actor[] = []
 
 function createFood() {
@@ -172,12 +130,12 @@ function createFood() {
 	game.add(food);
 	// No inherent behavour for food
 	food.body.collisionType = CollisionType.Passive;
+	foodArray.push(food)
 	return food
 }
 
 // Create starting food
-const food = createFood()
-foodArray.push(food)
+createFood()
 
 // Display quantity of food eaten
 const scoreCounter = new Label({
@@ -193,57 +151,32 @@ const scoreCounter = new Label({
 
 game.add(scoreCounter)
 
-// Needed for knowing where to add new particles
-// Fix for new vector process
-function getDirection() {
-	if (snakeHeadVector == vec(0, 200)) {
-		return "down";
-	} else if (snakeHeadVector = vec(0, -200)) {
-		return "up";
-	} else if (snakeHeadVector = vec(-200, 0)) {
-		return "left";
-	} else if (snakeHeadVector = vec(200, 0)) {
-		return "right";
-	} else {
-		return "none";
+// Snake eating food behaviour (add particle, new food, update score)
+snake.array[0].on("collisionstart", (event: CollisionStartEvent) => {
+	if (foodArray.includes(event.other)) {
+		let x = snake.array[snake.array.length - 1].pos.x
+		let y = snake.array[snake.array.length - 1].pos.y
+
+		// How many snake particles to add on consumption of food
+		for (let i = 0; i < 3; i++) {
+			const newSnakeParticle = addSnakeParticle(x, y);
+			newSnakeParticle.vel = snakeHead.vel
+		}
+
+		// Remove the eaten food
+		foodArray[foodArray.length-1].kill()
+
+		// Add new food and update score
+		createFood();
+		scoreCounter.text = (foodArray.length - 1).toString();
 	}
-}
-
-// // Snake eating food behaviour (add particle, new food, update score)
-// snake[0].on("collisionstart", () => {
-// 	const direction = getDirection()
-// 	let x, y;
-// 	if (direction === "down") {
-// 		x = snake[snake.length - 1].pos.x
-// 		y = snake[snake.length - 1].pos.y - 10
-// 	}
-// 	if (direction === "up") {
-// 		x = snake[snake.length - 1].pos.x
-// 		y = snake[snake.length - 1].pos.y - 10
-// 	}
-// 	if (direction === "left") {
-// 		x = snake[snake.length - 1].pos.x - 10
-// 		y = snake[snake.length - 1].pos.y
-// 	}
-// 	if (direction === "right") {
-// 		x = snake[snake.length - 1].pos.x - 10
-// 		y = snake[snake.length - 1].pos.y
-// 	}
-// 	const newSnakeParticle = addSnakeParticle(x, y);
-// 	newSnakeParticle.vel = snake[snake.length - 1].vel
-// 	newSnakeParticle.body.collisionType = CollisionType.PreventCollision
-// 	foodArray.forEach((food) => {
-// 		food.kill()
-// 	})
-// 	const food = createFood()
-// 	foodArray.push(food)
-// 	scoreCounter.text = (foodArray.length - 1).toString();
-// })
-
+});
 
 // Loss condition
-// snake[0].on('collisionend', (event: CollisionEndEvent) => {
-// 	if (snake.includes(event.other) && event.other != snake[0]) {
-// 		alert('You lose')
-// 	}
-// })
+snake.array[0].on("postupdate", () => {
+	for (let i = 2; i < snake.array.length; i++) {
+		if (snake.array[0].pos.equals(snake.array[i].pos)) {
+			alert("You lose!")
+		}
+	}
+});
